@@ -1,0 +1,202 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #07111f;
+  color: #f2f7ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #17304e, #07111f 70%);
+}
+
+button,
+input,
+audio {
+  font: inherit;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.8rem 1.2rem;
+  cursor: pointer;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.primary {
+  background: #4cc9f0;
+  color: #041320;
+}
+
+.secondary {
+  background: #233a57;
+  color: #f2f7ff;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.hero-card,
+.panel,
+.track-card {
+  background: rgba(7, 17, 31, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.hero-card {
+  padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.8rem;
+  color: #77d6ff;
+}
+
+.hero-copy {
+  max-width: 600px;
+  color: #aebdca;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.panel {
+  padding: 1.25rem 1.5rem;
+}
+
+.panel-header,
+.track-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.badge {
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(76, 201, 240, 0.16);
+  color: #9be7ff;
+  font-size: 0.9rem;
+}
+
+.settings-grid,
+.stats-grid,
+.tracks-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 1rem;
+}
+
+.settings-grid label {
+  display: grid;
+  gap: 0.4rem;
+  color: #c7d5e2;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #4cc9f0;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.stat {
+  font-size: 1.1rem;
+  margin: 0.3rem 0;
+}
+
+.meter {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+  margin-top: 0.7rem;
+}
+
+.meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4cc9f0, #3e6bff);
+  transition: width 120ms ease;
+}
+
+.error {
+  padding: 1rem 1.2rem;
+  border-radius: 16px;
+  background: rgba(255, 90, 90, 0.16);
+  color: #ffb6b6;
+  border: 1px solid rgba(255, 90, 90, 0.25);
+}
+
+.tracks-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.track-card {
+  padding: 1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+audio {
+  width: 100%;
+}
+
+.download-link {
+  color: #77d6ff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .hero-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero-actions {
+    width: 100%;
+  }
+
+  .hero-actions button {
+    flex: 1;
+  }
+}
