@@ -173,7 +173,8 @@ function App() {
           const denoisedOpusBlob = await buildOpusBlob(denoisedResult.samples, denoisedResult.sampleRate, settings);
           newTracks.push(createTrack('Denoised + Opus', denoisedOpusBlob, 'denoised-opus'));
         }
-      } else if (settings.includeOpus) {
+      }
+      if (settings.includeOpus) {
         const opusBlob = await buildOpusBlob(fullSamples, sampleRate, settings);
         newTracks.push(createTrack('Opus', opusBlob, 'opus'));
       }
