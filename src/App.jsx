@@ -13,6 +13,10 @@ const INITIAL_SETTINGS = {
   opusPacketLossPercent: 0,
   opusVbr: true,
   opusVbrConstraint: false,
+  includeRaw: true,
+  includeDenoised: true,
+  includeOpus: true,
+  includeDenoisedOpus: true,
 };
 
 function App() {
@@ -141,12 +145,6 @@ function App() {
       const fullSamples = mergeFloat32Arrays(sampleChunksRef.current);
       const sampleRate = audioContext?.sampleRate || 44100;
       const duration = fullSamples.length / sampleRate;
-      const rawBlob = buildWavBlob(fullSamples, sampleRate);
-
-      const denoisedResult = await processAudioSamples(fullSamples, settings.denoiseStrength, settings.denoiseFrameSize, 'denoise', { ...settings, inputSampleRate: sampleRate });
-      const denoisedBlob = buildWavBlob(denoisedResult.samples, denoisedResult.sampleRate);
-      const opusBlob = await buildOpusBlob(fullSamples, sampleRate, settings);
-      const denoisedOpusBlob = await buildOpusBlob(denoisedResult.samples, denoisedResult.sampleRate, settings);
 
       const createTrack = (label, blob, kind) => ({
         id: `${label}-${Date.now()}`,
@@ -158,13 +156,30 @@ function App() {
         duration,
       });
 
+      const newTracks = [];
+
+      if (settings.includeRaw) {
+        const rawBlob = buildWavBlob(fullSamples, sampleRate);
+        newTracks.push(createTrack('Raw', rawBlob, 'raw'));
+      }
+
+      if (settings.includeDenoised || settings.includeDenoisedOpus) {
+        const denoisedResult = await processAudioSamples(fullSamples, settings.denoiseStrength, settings.denoiseFrameSize, 'denoise', { ...settings, inputSampleRate: sampleRate });
+        if (settings.includeDenoised) {
+          const denoisedBlob = buildWavBlob(denoisedResult.samples, denoisedResult.sampleRate);
+          newTracks.push(createTrack('Denoised', denoisedBlob, 'denoised'));
+        }
+        if (settings.includeDenoisedOpus) {
+          const denoisedOpusBlob = await buildOpusBlob(denoisedResult.samples, denoisedResult.sampleRate, settings);
+          newTracks.push(createTrack('Denoised + Opus', denoisedOpusBlob, 'denoised-opus'));
+        }
+      } else if (settings.includeOpus) {
+        const opusBlob = await buildOpusBlob(fullSamples, sampleRate, settings);
+        newTracks.push(createTrack('Opus', opusBlob, 'opus'));
+      }
+
       tracks.forEach((track) => URL.revokeObjectURL(track.url));
-      setTracks([
-        createTrack('Raw', rawBlob, 'raw'),
-        createTrack('Denoised', denoisedBlob, 'denoised'),
-        createTrack('Opus', opusBlob, 'opus'),
-        createTrack('Denoised + Opus', denoisedOpusBlob, 'denoised-opus'),
-      ]);
+      setTracks(newTracks);
     } catch (err) {
       setError(err.message || 'Recording could not be processed.');
     } finally {
@@ -217,8 +232,30 @@ function App() {
 
       <section className="panel">
         <div className="panel-header">
-          <h2>Processing controls</h2>
+          <h2>Track selection</h2>
           <span className="badge">{summary}</span>
+        </div>
+
+        <div className="settings-group">
+          <h3>Include tracks</h3>
+          <div className="settings-grid">
+            <label className="toggle-row">
+              <span>Raw</span>
+              <input type="checkbox" name="includeRaw" checked={settings.includeRaw} onChange={handleSettingChange} />
+            </label>
+            <label className="toggle-row">
+              <span>Denoised</span>
+              <input type="checkbox" name="includeDenoised" checked={settings.includeDenoised} onChange={handleSettingChange} />
+            </label>
+            <label className="toggle-row">
+              <span>Opus</span>
+              <input type="checkbox" name="includeOpus" checked={settings.includeOpus} onChange={handleSettingChange} />
+            </label>
+            <label className="toggle-row">
+              <span>Denoised + Opus</span>
+              <input type="checkbox" name="includeDenoisedOpus" checked={settings.includeDenoisedOpus} onChange={handleSettingChange} />
+            </label>
+          </div>
         </div>
 
         <div className="settings-group">
