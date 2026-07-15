@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildWavBlob, createNoiseSuppressorNode, formatBytes, formatDuration, processAudioSamples } from './audio';
+import { buildOpusBlob, buildWavBlob, formatBytes, formatDuration, processAudioSamples } from './audio';
 
 const INITIAL_SETTINGS = {
   denoiseStrength: 0.7,
   denoiseFrameSize: 128,
+  rnnoiseEnabled: true,
   opusBitrate: 32000,
+  opusFrameSize: 960,
+  opusApplication: 'Voip',
+  opusSignal: 'Voice',
+  opusComplexity: 10,
+  opusPacketLossPercent: 0,
+  opusVbr: true,
+  opusVbrConstraint: false,
 };
 
 function App() {
@@ -20,7 +28,6 @@ function App() {
   const audioContextRef = useRef(null);
   const streamRef = useRef(null);
   const processorRef = useRef(null);
-  const noiseSuppressorNodeRef = useRef(null);
   const sampleChunksRef = useRef([]);
   const timerRef = useRef(null);
 
@@ -73,31 +80,33 @@ function App() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+        //   noiseSuppression: true,
+        //   autoGainControl: true,
+        },
+      });
       const audioContext = new window.AudioContext();
       await audioContext.resume();
       const sourceNode = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      const noiseSuppressorNode = await createNoiseSuppressorNode(audioContext);
 
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0);
+        const output = event.outputBuffer.getChannelData(0);
+        output.set(input);
+
         const peak = input.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
         setLevel(peak);
         sampleChunksRef.current.push(new Float32Array(input));
       };
 
-      if (noiseSuppressorNode) {
-        sourceNode.connect(noiseSuppressorNode);
-        noiseSuppressorNode.connect(processor);
-      } else {
-        sourceNode.connect(processor);
-      }
+      sourceNode.connect(processor);
       processor.connect(audioContext.destination);
 
       streamRef.current = stream;
       mediaRecorderRef.current = { stream, audioContext, sourceNode, processor };
-      noiseSuppressorNodeRef.current = noiseSuppressorNode;
       audioContextRef.current = audioContext;
       processorRef.current = processor;
       resetCapture();
@@ -119,9 +128,6 @@ function App() {
       if (processor) {
         processor.disconnect();
       }
-      if (noiseSuppressorNodeRef.current) {
-        noiseSuppressorNodeRef.current.disconnect();
-      }
       if (sourceNode) {
         sourceNode.disconnect();
       }
@@ -137,13 +143,10 @@ function App() {
       const duration = fullSamples.length / sampleRate;
       const rawBlob = buildWavBlob(fullSamples, sampleRate);
 
-      const [denoisedSamples, opusSamples] = await Promise.all([
-        processAudioSamples(fullSamples, settings.denoiseStrength, settings.denoiseFrameSize, 'denoise'),
-        processAudioSamples(fullSamples, settings.opusBitrate / 64000, settings.denoiseFrameSize, 'compress'),
-      ]);
-
-      const denoisedBlob = buildWavBlob(denoisedSamples, sampleRate);
-      const opusBlob = buildWavBlob(opusSamples, sampleRate);
+      const denoisedResult = await processAudioSamples(fullSamples, settings.denoiseStrength, settings.denoiseFrameSize, 'denoise', { ...settings, inputSampleRate: sampleRate });
+      const denoisedBlob = buildWavBlob(denoisedResult.samples, denoisedResult.sampleRate);
+      const opusBlob = await buildOpusBlob(fullSamples, sampleRate, settings);
+      const denoisedOpusBlob = await buildOpusBlob(denoisedResult.samples, denoisedResult.sampleRate, settings);
 
       const createTrack = (label, blob, kind) => ({
         id: `${label}-${Date.now()}`,
@@ -152,7 +155,7 @@ function App() {
         blob,
         url: URL.createObjectURL(blob),
         size: blob.size,
-        duration: duration,
+        duration,
       });
 
       tracks.forEach((track) => URL.revokeObjectURL(track.url));
@@ -160,6 +163,7 @@ function App() {
         createTrack('Raw', rawBlob, 'raw'),
         createTrack('Denoised', denoisedBlob, 'denoised'),
         createTrack('Opus', opusBlob, 'opus'),
+        createTrack('Denoised + Opus', denoisedOpusBlob, 'denoised-opus'),
       ]);
     } catch (err) {
       setError(err.message || 'Recording could not be processed.');
@@ -171,16 +175,17 @@ function App() {
       processorRef.current = null;
       audioContextRef.current = null;
       streamRef.current = null;
-      noiseSuppressorNodeRef.current = null;
       sampleChunksRef.current = [];
     }
   };
 
   const handleSettingChange = (event) => {
-    const { name, value } = event.target;
+    const { name, value, type, checked } = event.target;
+    const parsedValue = type === 'checkbox' ? checked : Number(value);
+
     setSettings((current) => ({
       ...current,
-      [name]: name === 'opusBitrate' ? Number(value) : Number(value),
+      [name]: Number.isNaN(parsedValue) ? value : parsedValue,
     }));
   };
 
@@ -212,25 +217,78 @@ function App() {
 
       <section className="panel">
         <div className="panel-header">
-          <h2>Library controls</h2>
+          <h2>Processing controls</h2>
           <span className="badge">{summary}</span>
         </div>
-        <div className="settings-grid">
-          <label>
-            <span>Denoise strength</span>
-            <input type="range" min="0.2" max="0.95" step="0.05" name="denoiseStrength" value={settings.denoiseStrength} onChange={handleSettingChange} />
-            <strong>{settings.denoiseStrength.toFixed(2)}</strong>
-          </label>
-          <label>
-            <span>Denoise frame size</span>
-            <input type="range" min="64" max="512" step="64" name="denoiseFrameSize" value={settings.denoiseFrameSize} onChange={handleSettingChange} />
-            <strong>{settings.denoiseFrameSize}</strong>
-          </label>
-          <label>
-            <span>Opus bitrate</span>
-            <input type="range" min="16000" max="64000" step="8000" name="opusBitrate" value={settings.opusBitrate} onChange={handleSettingChange} />
-            <strong>{settings.opusBitrate}</strong>
-          </label>
+
+        <div className="settings-group">
+          <h3>RNNoise</h3>
+          <div className="settings-grid">
+            <label className="toggle-row">
+              <span>Enable RNNoise</span>
+              <input type="checkbox" name="rnnoiseEnabled" checked={settings.rnnoiseEnabled} onChange={handleSettingChange} />
+            </label>
+            <label>
+              <span>Strength</span>
+              <input type="range" min="0.2" max="0.95" step="0.05" name="denoiseStrength" value={settings.denoiseStrength} onChange={handleSettingChange} />
+              <strong>{settings.denoiseStrength.toFixed(2)}</strong>
+            </label>
+            <label>
+              <span>Frame size</span>
+              <input type="range" min="64" max="512" step="64" name="denoiseFrameSize" value={settings.denoiseFrameSize} onChange={handleSettingChange} />
+              <strong>{settings.denoiseFrameSize}</strong>
+            </label>
+          </div>
+        </div>
+
+        <div className="settings-group">
+          <h3>Opus</h3>
+          <div className="settings-grid">
+            <label>
+              <span>Bitrate</span>
+              <input type="range" min="16000" max="64000" step="8000" name="opusBitrate" value={settings.opusBitrate} onChange={handleSettingChange} />
+              <strong>{settings.opusBitrate}</strong>
+            </label>
+            <label>
+              <span>Frame size</span>
+              <input type="range" min="480" max="1920" step="480" name="opusFrameSize" value={settings.opusFrameSize} onChange={handleSettingChange} />
+              <strong>{settings.opusFrameSize}</strong>
+            </label>
+            <label>
+              <span>Application</span>
+              <select name="opusApplication" value={settings.opusApplication} onChange={handleSettingChange}>
+                <option value="Audio">Audio</option>
+                <option value="Voip">VoIP</option>
+                <option value="RestrictedLowDelay">Low delay</option>
+              </select>
+            </label>
+            <label>
+              <span>Signal type</span>
+              <select name="opusSignal" value={settings.opusSignal} onChange={handleSettingChange}>
+                <option value="Auto">Auto</option>
+                <option value="Voice">Voice</option>
+                <option value="Music">Music</option>
+              </select>
+            </label>
+            <label>
+              <span>Complexity</span>
+              <input type="range" min="0" max="10" step="1" name="opusComplexity" value={settings.opusComplexity} onChange={handleSettingChange} />
+              <strong>{settings.opusComplexity}</strong>
+            </label>
+            <label>
+              <span>Packet loss %</span>
+              <input type="range" min="0" max="100" step="5" name="opusPacketLossPercent" value={settings.opusPacketLossPercent} onChange={handleSettingChange} />
+              <strong>{settings.opusPacketLossPercent}%</strong>
+            </label>
+            <label className="toggle-row">
+              <span>VBR</span>
+              <input type="checkbox" name="opusVbr" checked={settings.opusVbr} onChange={handleSettingChange} />
+            </label>
+            <label className="toggle-row">
+              <span>VBR constraint</span>
+              <input type="checkbox" name="opusVbrConstraint" checked={settings.opusVbrConstraint} onChange={handleSettingChange} />
+            </label>
+          </div>
         </div>
       </section>
 
@@ -264,8 +322,12 @@ function App() {
             </div>
             <p>{formatDuration(track.duration)}</p>
             <audio controls src={track.url} />
-            <a className="download-link" href={track.url} download={`${track.kind}.wav`}>
-              Download WAV
+            <a
+              className="download-link"
+              href={track.url}
+              download={`${track.kind}.${track.kind === 'opus' || track.kind === 'denoised-opus' ? (track.blob.type.includes('webm') ? 'webm' : 'ogg') : 'wav'}`}
+            >
+              {track.kind === 'opus' || track.kind === 'denoised-opus' ? 'Download Opus' : 'Download WAV'}
             </a>
           </article>
         ))}
