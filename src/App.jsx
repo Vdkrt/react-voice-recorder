@@ -99,7 +99,7 @@ function App() {
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0);
         const output = event.outputBuffer.getChannelData(0);
-        output.set(input);
+        output.fill(0);
 
         const peak = input.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
         setLevel(peak);
